@@ -55,12 +55,7 @@ type DockPosition = {
   y: number;
 };
 
-type StoredDockPosition = DockPosition & {
-  viewportWidth?: number;
-  viewportHeight?: number;
-};
-
-type DockPositions = Partial<Record<DockViewport, StoredDockPosition>>;
+type DockPositions = Partial<Record<DockViewport, DockPosition>>;
 
 /**
  * 获取信任等级对应的文本描述
@@ -128,11 +123,7 @@ export function ManagementBar() {
 
     const nextPositions = {
       ...readDockPositions(),
-      [viewport]: {
-        ...position,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-      },
+      [viewport]: position,
     };
 
     window.localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify(nextPositions));
@@ -176,25 +167,6 @@ export function ManagementBar() {
     return clampDockPosition(basePosition);
   }, [clampDockPosition, getDockRect]);
 
-  const getScaledDockPosition = useCallback((position: StoredDockPosition): DockPosition => {
-    if (typeof window === 'undefined' || !position.viewportWidth || !position.viewportHeight) {
-      return clampDockPosition(position);
-    }
-
-    const {width, height} = getDockRect();
-    const oldMaxX = Math.max(DOCK_MARGIN, position.viewportWidth - width - DOCK_MARGIN);
-    const oldMaxY = Math.max(DOCK_MARGIN, position.viewportHeight - height - DOCK_MARGIN);
-    const nextMaxX = Math.max(DOCK_MARGIN, window.innerWidth - width - DOCK_MARGIN);
-    const nextMaxY = Math.max(DOCK_MARGIN, window.innerHeight - height - DOCK_MARGIN);
-    const xRatio = oldMaxX === DOCK_MARGIN ? 0 : (position.x - DOCK_MARGIN) / (oldMaxX - DOCK_MARGIN);
-    const yRatio = oldMaxY === DOCK_MARGIN ? 0 : (position.y - DOCK_MARGIN) / (oldMaxY - DOCK_MARGIN);
-
-    return clampDockPosition({
-      x: DOCK_MARGIN + xRatio * (nextMaxX - DOCK_MARGIN),
-      y: DOCK_MARGIN + yRatio * (nextMaxY - DOCK_MARGIN),
-    });
-  }, [clampDockPosition, getDockRect]);
-
   const syncDockPosition = useCallback((nextViewport?: DockViewport) => {
     if (typeof window === 'undefined') return;
 
@@ -203,9 +175,9 @@ export function ManagementBar() {
     setDockViewport(viewport);
 
     const savedPosition = readDockPositions()[viewport];
-    const nextPosition = savedPosition ? getScaledDockPosition(savedPosition) : getDefaultDockPosition(viewport);
+    const nextPosition = clampDockPosition(savedPosition ?? getDefaultDockPosition(viewport));
     setDockPosition(nextPosition);
-  }, [getDefaultDockPosition, getScaledDockPosition, getViewport, readDockPositions]);
+  }, [clampDockPosition, getDefaultDockPosition, getViewport, readDockPositions]);
 
   useEffect(() => {
     setMounted(true);
@@ -234,7 +206,7 @@ export function ManagementBar() {
 
         dockViewportRef.current = viewport;
         setDockViewport(viewport);
-        setDockPosition(savedPosition ? getScaledDockPosition(savedPosition) : getDefaultDockPosition(viewport));
+        setDockPosition((current) => clampDockPosition(savedPosition ?? current ?? getDefaultDockPosition(viewport)));
       });
     };
 
@@ -244,7 +216,7 @@ export function ManagementBar() {
       window.cancelAnimationFrame(frameId);
       window.removeEventListener('resize', handleResize);
     };
-  }, [getDefaultDockPosition, getScaledDockPosition, getViewport, mounted, readDockPositions, syncDockPosition]);
+  }, [clampDockPosition, getDefaultDockPosition, getViewport, mounted, readDockPositions, syncDockPosition]);
 
   useEffect(() => {
     const handleOpenPaymentSettings = () => {
